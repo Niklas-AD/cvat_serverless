@@ -1,0 +1,111 @@
+metadata:
+  name: pth.facebookresearch.detectron2.mask2former
+  namespace: cvat
+  annotations:
+    name: Mask2Former
+    type: detector
+    framework: pytorch
+    spec: |
+      [ { "id": 0, "name": "road" }, 
+        { "id": 1, "name": "sidewalk" },
+        { "id": 2, "name": "building" },
+        { "id": 3, "name": "wall" },
+        { "id": 4, "name": "fence" },
+        { "id": 5, "name": "pole" },
+        { "id": 6, "name": "traffic light" },
+        { "id": 7, "name": "traffic sign" },
+        { "id": 8, "name": "vegetation" },
+        { "id": 9, "name": "terrain" },
+        { "id": 10, "name": "sky" },
+        { "id": 11, "name": "person" },
+        { "id": 12, "name": "rider" },
+        { "id": 13, "name": "car" },
+        { "id": 14, "name": "truck" },
+        { "id": 15, "name": "bus" },
+        { "id": 16, "name": "train" },
+        { "id": 17, "name": "motorcycle" },
+        { "id": 18, "name": "bicycle" }
+      ]
+
+spec:
+  description: Mask2Former SwinB from Detectron2
+  runtime: 'python:3.8'
+  handler: main:handler
+  eventTimeout: 60s
+
+  build:
+    image: cvat/pth.facebookresearch.detectron2.mask2former
+    baseImage: ubuntu:20.04
+
+    directives:
+      preCopy:
+        - kind: ENV
+          value: DEBIAN_FRONTEND=noninteractive
+        - kind: RUN
+          value: apt-get update && apt-get -y install curl git python3 wget python3-pip libgl1-mesa-glx libglib2.0-0
+        - kind: WORKDIR
+          value: /opt/nuclio
+        - kind: RUN
+          value: pip3 install -U torch==1.10 torchvision==0.11.1 -f https://download.pytorch.org/whl/cu111/torch_stable.html
+        - kind: RUN
+          value: pip3 install detectron2 -f https://dl.fbaipublicfiles.com/detectron2/wheels/cu111/torch1.10/index.html
+        - kind: RUN  
+          value: pip3 install git+https://github.com/cocodataset/panopticapi.git
+        - kind: RUN  
+          value: pip3 install ninja  
+        - kind: RUN
+          value: pip3 install git+https://github.com/mcordts/cityscapesScripts.git
+        - kind: ENV
+          value: TORCH_CUDA_ARCH_LIST="Kepler;Kepler+Tesla;Maxwell;Maxwell+Tegra;Pascal;Volta;Turing"
+        - kind: RUN
+          value: wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
+        - kind: RUN
+          value: mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
+        - kind: RUN
+          value: wget https://developer.download.nvidia.com/compute/cuda/11.1.0/local_installers/cuda-repo-ubuntu2004-11-1-local_11.1.0-455.23.05-1_amd64.deb
+        - kind: RUN
+          value: dpkg -i cuda-repo-ubuntu2004-11-1-local_11.1.0-455.23.05-1_amd64.deb  
+        - kind: RUN
+          value: apt-key add /var/cuda-repo-ubuntu2004-11-1-local/7fa2af80.pub
+        - kind: RUN
+          value: apt-get update 
+        - kind: RUN
+          value: apt-get -y install cuda            
+        - kind: ENV
+          value: FORCE_CUDA=1  
+        - kind: RUN
+          value: git clone https://github.com/facebookresearch/Mask2Former
+        - kind: RUN
+          value: pip3 install -U opencv-python
+        - kind: RUN
+          value: pip3 install -r Mask2Former/requirements.txt   
+        - kind: RUN
+          value: python3 Mask2Former/mask2former/modeling/pixel_decoder/ops/setup.py build install
+        - kind: RUN
+          value: curl -O https://dl.fbaipublicfiles.com/maskformer/mask2former/cityscapes/panoptic/maskformer2_swin_base_IN21k_384_bs16_90k/model_final_fa840f.pkl
+        - kind: RUN
+          value: curl -O https://dl.fbaipublicfiles.com/maskformer/mask2former/cityscapes/instance/maskformer2_R50_bs16_90k/model_final_01a8ed.pkl
+        - kind: RUN
+          value: curl -O https://dl.fbaipublicfiles.com/maskformer/mask2former/cityscapes/panoptic/maskformer2_R50_bs16_90k/model_final_4ab90c.pkl  
+        - kind: RUN
+          value: ln -s /usr/bin/pip3 /usr/local/bin/pip 
+  triggers:
+    myHttpTrigger:
+      maxWorkers: 1
+      kind: 'http'
+      workerAvailabilityTimeoutMilliseconds: 10000
+      attributes:
+        maxRequestBodySize: 33554432 # 32MB
+        port: 32001
+
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+
+  platform:
+    attributes:
+      restartPolicy:
+        name: always
+        maximumRetryCount: 3
+      mountMode: volume
+      network: cvat_cvat
